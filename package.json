@@ -1,7 +1,6 @@
 {
-  "name": "smepay-gateway",
+  "name": "smepay-vercel",
   "version": "1.0.0",
-  "type": "module",
   "dependencies": {
     "axios": "latest"
   }
