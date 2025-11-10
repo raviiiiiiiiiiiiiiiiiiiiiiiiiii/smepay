@@ -5,14 +5,17 @@ export default async function handler(req, res) {
     const orderId = req.query.order_id;
     if (!orderId) return res.status(400).send("Missing order ID");
 
-    // 🔥 STEP 1: Create SMEPay payment link
+    // ✅ TEMP: 100 Rs Amount (we will fix to real amount later)
+    const amount = 100;
+
+    // ✅ Create SMEPay payment link
     const response = await axios.post(
-      "https://api.smepay.in/payment/create",   // ✅ placeholder URL
+      "https://api.smepay.in/payment/create",
       {
-        amount: 100,                           // ✅ TEMP: replace later with real order price
+        amount: amount,
         currency: "INR",
         description: `Order #${orderId}`,
-        metadata: { order_id: orderId }        // ✅ critical for webhook
+        metadata: { order_id: orderId }
       },
       {
         headers: {
@@ -24,6 +27,7 @@ export default async function handler(req, res) {
 
     console.log("SMEPAY RESPONSE:", response.data);
 
+    // ✅ SMEPay returns different possible fields — try all
     const paymentUrl =
       response.data?.payment_url ||
       response.data?.url ||
@@ -32,14 +36,14 @@ export default async function handler(req, res) {
     if (!paymentUrl) {
       return res
         .status(500)
-        .send("SMEPay did not return payment URL. Check logs.");
+        .send("SMEPay did not return a payment URL. Check logs.");
     }
 
-    // 🔥 STEP 2: Redirect user
+    // ✅ Redirect customer to SMEPay link
     return res.redirect(paymentUrl);
 
-  } catch (err) {
-    console.error("SMEPay error:", err?.response?.data || err.message);
+  } catch (error) {
+    console.error("SMEPay Error:", error?.response?.data || error);
     return res.status(500).send("Error creating payment link");
   }
 }
