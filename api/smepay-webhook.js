@@ -1,27 +1,38 @@
 const axios = require("axios");
+const querystring = require("querystring");
 
 module.exports = async (req, res) => {
   try {
-    // ✅ Vercel requires explicit body parsing for webhooks
-    if (!req.body || Object.keys(req.body).length === 0) {
-      let raw = "";
-      await new Promise((resolve) => {
-        req.on("data", (chunk) => (raw += chunk));
-        req.on("end", resolve);
-      });
+    let raw = "";
 
+    await new Promise((resolve) => {
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", resolve);
+    });
+
+    let payload = {};
+
+    // ✅ Try JSON
+    try {
+      if (raw) payload = JSON.parse(raw);
+    } catch (e) {}
+
+    // ✅ Try form-urlencoded
+    if (Object.keys(payload).length === 0 && raw) {
       try {
-        req.body = JSON.parse(raw);
-      } catch {
-        console.log("⚠️ Failed to parse raw webhook body:", raw);
-        return res.status(200).send("Bad JSON");
-      }
+        payload = querystring.parse(raw);
+      } catch (e) {}
     }
 
-    const payload = req.body;
-    console.log("🔥 SMEPay Webhook:", payload);
+    // ✅ Log what we actually received
+    console.log("🔥 SMEPay Webhook RAW:", raw);
+    console.log("✅ SMEPay Webhook Parsed:", payload);
 
-    // ✅ Read status
+    if (!payload || Object.keys(payload).length === 0) {
+      return res.status(200).send("No data received");
+    }
+
+    // ✅ Detect status field
     const status =
       payload.status ||
       payload.payment_status ||
@@ -31,24 +42,24 @@ module.exports = async (req, res) => {
       return res.status(200).send("Ignoring non-paid events");
     }
 
-    // ✅ Extract order ID
+    // ✅ Detect order ID
     const orderId =
-      payload.metadata?.order_id ||
       payload.order_id ||
+      payload.metadata?.order_id ||
       payload.data?.metadata?.order_id;
 
-    // ✅ Extract transaction ID
+    // ✅ Detect transaction id
     const txnId =
       payload.payment_id ||
       payload.transaction_id ||
       payload.data?.payment_id;
 
     if (!orderId) {
-      console.log("⚠️ No order ID from SMEPay webhook");
+      console.log("⚠️ No order ID found");
       return res.status(200).send("Missing order ID");
     }
 
-    console.log("✅ Marking Shopline order paid:", orderId);
+    console.log("✅ Marking order paid:", orderId);
 
     await axios.patch(
       `https://api.shoplineapp.com/orders/${orderId}/payment`,
@@ -67,12 +78,11 @@ module.exports = async (req, res) => {
 
     return res.status(200).send("OK");
   } catch (err) {
-    console.error("Webhook Error:", err.response?.data || err);
-    return res.status(500).send("Webhook processing error");
+    console.error("❌ Webhook Error:", err);
+    res.status(500).send("Webhook failed");
   }
 };
 
-// ✅ This tells Vercel: "DO NOT do your own body parsing"
 module.exports.config = {
   api: {
     bodyParser: false
