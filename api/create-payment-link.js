@@ -1,49 +1,42 @@
-import axios from "axios";
+const axios = require("axios");
+const getAccessToken = require("./oauth");
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   try {
-    const orderId = req.query.order_id;
-    if (!orderId) return res.status(400).send("Missing order ID");
+    const { order_id } = req.query;
+    if (!order_id) return res.status(400).send("Missing order ID");
 
-    // ✅ TEMP: 100 Rs Amount (we will fix to real amount later)
-    const amount = 100;
+    const accessToken = await getAccessToken();
 
-    // ✅ Create SMEPay payment link
     const response = await axios.post(
-      "https://api.smepay.in/payment/create",
+      "https://api.smepay.in/api/payment/create-checkout",
       {
-        amount: amount,
+        amount: 100, 
         currency: "INR",
-        description: `Order #${orderId}`,
-        metadata: { order_id: orderId }
+        description: `Order #${order_id}`,
+        metadata: { order_id }
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.SMEPAY_API_KEY}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json"
         }
       }
     );
 
-    console.log("SMEPAY RESPONSE:", response.data);
-
-    // ✅ SMEPay returns different possible fields — try all
-    const paymentUrl =
+    const redirectUrl =
       response.data?.payment_url ||
-      response.data?.url ||
-      response.data?.redirect_url;
+      response.data?.checkout_url ||
+      response.data?.url;
 
-    if (!paymentUrl) {
-      return res
-        .status(500)
-        .send("SMEPay did not return a payment URL. Check logs.");
+    if (!redirectUrl) {
+      console.log("Response from SMEPay:", response.data);
+      return res.status(500).send("No payment URL from SMEPay");
     }
 
-    // ✅ Redirect customer to SMEPay link
-    return res.redirect(paymentUrl);
-
-  } catch (error) {
-    console.error("SMEPay Error:", error?.response?.data || error);
-    return res.status(500).send("Error creating payment link");
+    return res.redirect(redirectUrl);
+  } catch (err) {
+    console.error("Create payment error:", err.response?.data || err);
+    res.status(500).send("Failed to create SMEPay checkout");
   }
-}
+};
